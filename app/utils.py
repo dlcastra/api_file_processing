@@ -1,12 +1,10 @@
-from datetime import datetime, timedelta
-
-from jose import jwt
+from fastapi import HTTPException
+from fastapi.requests import Request
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from settings.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -19,12 +17,6 @@ class AuthUtils:
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         return pwd_context.verify(plain_password, hashed_password)
-
-    @staticmethod
-    def create_access_token(data: dict) -> str:
-        expire = datetime.now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-        data.update({"exp": expire})
-        return jwt.encode(data, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 async def async_get_or_create(session: AsyncSession, model, defaults=None, **kwargs):
@@ -49,3 +41,10 @@ async def async_get_or_create(session: AsyncSession, model, defaults=None, **kwa
         instance = result.scalars().first()
 
         return instance, False
+
+
+def get_current_user_from_session(request: Request):
+    session_id = request.session.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return session_id

@@ -1,7 +1,7 @@
 import re
 
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -18,20 +18,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
 
-    token = relationship("AuthToken", back_populates="user_token")
     files = relationship("file.File", back_populates="owner")
-
-
-class AuthToken(Base):
-    __tablename__ = "auth_tokens"
-
-    id = Column(Integer, primary_key=True, index=True)
-    key = Column(String, unique=True, index=True, nullable=False)
-    user_agent = Column(String, nullable=False, default="Unknown")
-    created_at = Column(DateTime(timezone=True), default=func.now())
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-    user_token = relationship("User", back_populates="token")
 
 
 class UserCreate(BaseModel):
