@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User, AuthToken
+from app.models.user import User
 from app.utils import AuthUtils
 
 
@@ -41,28 +41,7 @@ class AuthService:
 
         return user
 
-    async def save_auth_token(self, user: User, token_key: str) -> AuthToken:
-        auth_token = AuthToken(user_id=user.id, key=token_key)
 
-        self.db.add(auth_token)
-        try:
-            await self.db.commit()
-            return auth_token
-        except Exception:
-            await self.db.rollback()
-            raise HTTPException(status_code=500, detail="Failed to create auth token")
-
-    async def remove_auth_token(self, key: str):
-        try:
-            query = select(AuthToken).filter(AuthToken.key == key)
-            result = await self.db.execute(query)
-            token = result.scalars().first()
-
-            if token:
-                await self.db.delete(token)
-                await self.db.commit()
-            else:
-                raise HTTPException(status_code=404, detail="Token not found")
-        except Exception as e:
-            await self.db.rollback()
-            raise HTTPException(status_code=500, detail=f"Error removing token: {str(e)}")
+async def store_session(redis, user_id, session_id):
+    key = f"user:{user_id}:session:{session_id}"
+    await redis.set(key, "active", ex=30)
