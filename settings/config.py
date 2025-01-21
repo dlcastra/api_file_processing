@@ -1,3 +1,4 @@
+import os
 import logging
 import platform
 
@@ -5,16 +6,24 @@ from colorama import Fore, Style, init
 from decouple import config
 from pydantic_settings import BaseSettings
 
+from settings.utils import get_database_url
+
 if platform.system() == "Windows":
     init(autoreset=True)
 
 
 # Base settings
 class Settings(BaseSettings):
-    database_url: str = config("DATABASE_URL", "mock-db")
-    SECRET_KEY: str = config("JWT_SECRET", "mock-jwt-secret")
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 2
+    SECRET_KEY: str = config("SECRET_KEY", "mock-secret-key")
+
+    # Database settings
+    DATABASE_URL: str = get_database_url()
+
+    # AWS settings
+    AWS_ACCESS_KEY_ID: str = config("AWS_ACCESS_KEY_ID", "mock-access-key")
+    AWS_SECRET_ACCESS_KEY: str = config("AWS_SECRET_ACCESS_KEY", "mock-secret-key")
+    AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", "mock-bucket")
+    AWS_REGION: str = config("AWS_REGION", "us-east-1")
 
 
 # Logger settings

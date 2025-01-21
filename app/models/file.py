@@ -10,8 +10,8 @@ class File(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     file_name = Column(String, nullable=False)
-    file_path = Column(String, nullable=False)
-    uploaded_at = Column(DateTime(timezone=True), default=str(func.now()))
+    s3_url = Column(String, nullable=False)
+    uploaded_at = Column(DateTime(timezone=True), default=func.now())
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     owner = relationship("user.User", back_populates="files")
