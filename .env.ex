@@ -1,2 +1,2 @@
 DATABASE_URL=url
-JWT_SECRET=top_secret
+SECRET_KEY=top_secret
