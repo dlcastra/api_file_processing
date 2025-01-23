@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
 from app.utils import AuthUtils
+from app.constants import SESSION_AGE
 
 
 class AuthService:
@@ -44,4 +45,4 @@ class AuthService:
 
 async def store_session(redis, user_id, session_id):
     key = f"user:{user_id}:session:{session_id}"
-    await redis.set(key, "active", ex=30)
+    await redis.set(key, "active", ex=SESSION_AGE)
