@@ -1,7 +1,7 @@
-import os
 import logging
 import platform
 
+import redis.asyncio as aioredis
 from colorama import Fore, Style, init
 from decouple import config
 from pydantic_settings import BaseSettings
@@ -42,9 +42,12 @@ class ColorLogFormatter(logging.Formatter):
         return f"{color}{message}{Style.RESET_ALL}"
 
 
-# console_handler = logging.StreamHandler()
-# console_handler.setFormatter(ColorLogFormatter("%(levelname)s: %(message)s"))
-# logging.basicConfig(level=logging.DEBUG, handlers=[console_handler])
-# logger = logging.getLogger(__name__)
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(ColorLogFormatter("%(levelname)s: %(message)s"))
+logging.basicConfig(level=logging.DEBUG, handlers=[console_handler])
+logger = logging.getLogger(__name__)
+
+# Redis settings
+redis = aioredis.from_url("redis://redis:6379/1")
 
 settings = Settings()
