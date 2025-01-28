@@ -1,6 +1,5 @@
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import RedirectResponse
 
 
 class BlacklistMiddleware(BaseHTTPMiddleware):
@@ -17,7 +16,7 @@ class BlacklistMiddleware(BaseHTTPMiddleware):
         key = f"blacklist:session:{session_id}"
         is_blacklisted = self.redis.exists(key)
         if is_blacklisted:
-            return RedirectResponse(url=self.logout_url, status_code=302)
+            request.session.clear()
 
         response = await call_next(request)
         return response

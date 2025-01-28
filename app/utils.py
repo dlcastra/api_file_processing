@@ -77,6 +77,7 @@ async def blacklist_check(request: Request) -> None:
     is_blacklisted = await redis.exists(key)
     if is_blacklisted:
         request.session.clear()
+        await redis.delete(key)
 
 
 async def check_cache(redis_url):
