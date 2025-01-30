@@ -2,6 +2,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy.ext.asyncio import create_async_engine
+from decouple import config as env_config
 
 import app.models
 from settings.database import Base
@@ -17,10 +18,12 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+database_url = env_config("DATABASE_URL")
+
 
 def get_url():
     """Get database URL from Alembic settings"""
-    return config.get_main_option("sqlalchemy.url")
+    return config.get_main_option("sqlalchemy.url", database_url)
 
 
 async def run_migrations_offline() -> None:
