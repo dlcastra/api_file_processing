@@ -1,46 +1,39 @@
-from botocore.exceptions import NoCredentialsError, PartialCredentialsError
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.requests import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from settings.aws_config import s3_client
-from settings.config import settings
+from app.services.file_management import FileManagementService
 from settings.database import get_db
+from app.validators.file_validation import FileValidator, invalid_file
 
 router = APIRouter()
 
 
-#
 @router.get("/history", status_code=200)
 async def files_history(request: Request, db: AsyncSession = Depends(get_db)):
-    return {}
+    file_manager = FileManagementService(db)
+    return await file_manager.get_files_history(request.session.get("user_id"))
 
 
 @router.post("/upload", status_code=201)
-async def upload_file(file: UploadFile = File(...)):
-    try:
-        file_content = await file.read()
-        file_name = file.filename
-        bucket_name = settings.AWS_S3_BUCKET_NAME
+async def upload_file(request: Request, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    is_valid_file = FileValidator().validate_file(file)
+    if not is_valid_file:
+        raise HTTPException(status_code=400, detail=invalid_file)
 
-        s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=file_content)
-        file_url = f"https://{bucket_name}.s3.{s3_client.meta.region_name}.amazonaws.com/{file_name}"
+    file_manager = FileManagementService(db)
+    user_id: int = request.session.get("user_id")
 
-        return {"status": "success", "file_url": file_url}
-
-    except NoCredentialsError:
-        return {"status": "error", "message": "AWS credentials not found"}
-    except PartialCredentialsError:
-        return {"status": "error", "message": "Incomplete AWS credentials"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    return await file_manager.add_file(file, user_id)
 
 
 @router.get("/download/{file_id}", status_code=200)
-async def download_file(file_id: str, db: AsyncSession = Depends(get_db)):
-    return {}
+async def download_file(request: Request, file_id: int, db: AsyncSession = Depends(get_db)):
+    file_manager = FileManagementService(db)
+    return await file_manager.download_file(file_id, request.session.get("user_id"))
 
 
 @router.delete("/remove/{file_id}", status_code=204)
-async def remove_file(file_id: str, db: AsyncSession = Depends(get_db)):
-    return {}
+async def remove_file(request: Request, file_id: int, db: AsyncSession = Depends(get_db)):
+    file_manager = FileManagementService(db)
+    return await file_manager.remove_file(file_id, request.session.get("user_id"))
