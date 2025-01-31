@@ -1,14 +1,19 @@
 import uuid
+from base64 import b64encode
+from datetime import datetime
+from io import BytesIO
 
+import pyotp
+import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import UserCreate, UserLogin
+from app.models.user import UserCreate, UserLogin, User
 from app.services.auth import AuthService, store_session
-from app.utils import get_current_user_from_session, AuthUtils, add_to_blacklist, blacklist_check
+from app.utils import add_to_blacklist, blacklist_check
 from app.validators.password_validation import PasswordValidator, invalid_password
-from settings.config import redis
+from settings.config import redis, templates
 from settings.database import get_db
 
 router = APIRouter()
@@ -48,15 +53,23 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 @router.post("/login", status_code=201)
 async def login(request: Request, user_data: UserLogin, db: AsyncSession = Depends(get_db)):
     auth_service = AuthService(db)
-    auth_util = AuthUtils()
 
-    user = await auth_service.authenticate_user(user_data.username, user_data.password)
+    user: User = await auth_service.authenticate_user(user_data.username, user_data.password)
     if not user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
+    if user.is_2fa_enabled:
+        totp = pyotp.TOTP(user.totp_secret)
+        if not totp.verify(user_data.totp_code):
+            raise HTTPException(status_code=401, detail="Invalid 2FA code")
+
+    user.last_login = datetime.now()
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
     session_id = str(uuid.uuid4())
     request.session["session_id"] = session_id
-    request.session["access_token"] = {"type": "Bearer", "access_token": auth_util.create_access_token()}
     request.session["user_id"] = user.id
 
     await store_session(redis, user.id, session_id)
@@ -96,6 +109,38 @@ async def logout_others(request: Request):
     return {"message": "No external sessions"}
 
 
-@router.get("/protected", dependencies=[Depends(blacklist_check)])
-async def protected_route(session_id: str = Depends(get_current_user_from_session)):
-    return {"message": "You are authenticated", "session_id": session_id}
+@router.post("/enable-2fa", status_code=201, dependencies=[Depends(blacklist_check)])
+async def enable_2fa(request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = request.session.get("user_id")
+
+    try:
+        user = await db.get(User, user_id)
+
+        user.totp_secret = pyotp.random_base32()
+        user.is_2fa_enabled = True
+        await db.commit()
+
+        totp_uri = pyotp.totp.TOTP(user.totp_secret).provisioning_uri(name=user.username, issuer_name="FPMA")
+        qr = qrcode.make(totp_uri)
+        buffer = BytesIO()
+        qr.save(buffer, format="PNG")
+        qrcode_base64 = b64encode(buffer.getvalue()).decode()
+
+        return templates.TemplateResponse("totp.html", {"request": request, "qr_code": qrcode_base64})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/disable-2fa", status_code=200, dependencies=[Depends(blacklist_check)])
+async def disable_2fa(request: Request, db: AsyncSession = Depends(get_db)):
+    user_id = request.session.get("user_id")
+    try:
+        user = await db.get(User, user_id)
+
+        user.totp_secret = "disabled"
+        user.is_2fa_enabled = False
+        await db.commit()
+
+        return {"message": "Successfully disabled 2FA"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -5,6 +5,7 @@ import redis.asyncio as aioredis
 from colorama import Fore, Style, init
 from decouple import config
 from pydantic_settings import BaseSettings
+from starlette.templating import Jinja2Templates
 
 if platform.system() == "Windows":
     init(autoreset=True)
@@ -49,5 +50,8 @@ logger = logging.getLogger(__name__)
 
 # Redis settings
 redis = aioredis.from_url("redis://redis:6379/1")
+
+# Template dir
+templates = Jinja2Templates(directory="templates")
 
 settings = Settings()
