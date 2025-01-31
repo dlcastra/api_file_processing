@@ -4,7 +4,7 @@ import uuid
 import typer
 from passlib.hash import bcrypt
 
-# from settings.config import logger
+from settings.config import logger
 from management.utils import ShellCommandLogs, run_command
 
 app = typer.Typer()
@@ -16,11 +16,11 @@ def get_secret_key():
     try:
         if not os.path.exists(".env"):
             with open(".env", "w") as file:
-                # logger.info("Created .env file in root directory")
+                logger.info("Created .env file in root directory")
                 file.write("")
 
         with open(".env", "r") as file:
-            # logger.info("Reading .env")
+            logger.info("Reading .env")
             env_content = file.read()
 
         if "SECRET_KEY=" in env_content:
@@ -45,20 +45,6 @@ def get_secret_key():
 @app.command()
 def init_alembic():
     output = run_command("alembic stamp head")
-    typer.echo(output)
-
-
-@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
-def makemigrations(ctx: typer.Context):
-    command_args = ["alembic", "revision", "--autogenerate"] + list(ctx.args)
-    command = " ".join(map(str, command_args))
-    output = run_command(command)
-    typer.echo(output)
-
-
-@app.command()
-def migrate():
-    output = run_command("alembic upgrade head")
     typer.echo(output)
 
 
