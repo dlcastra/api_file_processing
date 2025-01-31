@@ -6,18 +6,18 @@ from colorama import Fore, Style, init
 from decouple import config
 from pydantic_settings import BaseSettings
 
-from settings.utils import get_database_url
-
 if platform.system() == "Windows":
     init(autoreset=True)
 
-
 # Base settings
+local_db = "postgresql+asyncpg://postgres:password@localhost/file_processing"
+
+
 class Settings(BaseSettings):
     SECRET_KEY: str = config("SECRET_KEY", "mock-secret-key")
 
     # Database settings
-    DATABASE_URL: str = get_database_url()
+    DATABASE_URL: str = config("DATABASE_URL", local_db)
 
     # AWS settings
     AWS_ACCESS_KEY_ID: str = config("AWS_ACCESS_KEY_ID", "mock-access-key")

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import UserCreate, UserLogin
 from app.services.auth import AuthService, store_session
 from app.utils import get_current_user_from_session, AuthUtils, add_to_blacklist, blacklist_check
-from app.validation.password_validation import PasswordValidator, invalid_password
+from app.validators.password_validation import PasswordValidator, invalid_password
 from settings.config import redis
 from settings.database import get_db
 

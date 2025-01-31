@@ -11,6 +11,7 @@ class File(Base):
     id = Column(Integer, primary_key=True, index=True)
     file_name = Column(String, nullable=False)
     s3_url = Column(String, nullable=False)
+    s3_key = Column(String, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), default=func.now())
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
