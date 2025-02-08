@@ -18,12 +18,16 @@ class Settings(BaseSettings):
 
     # Database settings
     DATABASE_URL: str = config("DATABASE_URL", local_db)
+    INTERNAL_WEBHOOK_URL: str = config("INTERNAL_WEBHOOK_URL")
 
     # AWS settings
     AWS_ACCESS_KEY_ID: str = config("AWS_ACCESS_KEY_ID", "mock-access-key")
     AWS_SECRET_ACCESS_KEY: str = config("AWS_SECRET_ACCESS_KEY", "mock-secret-key")
     AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", "mock-bucket")
     AWS_REGION: str = config("AWS_REGION", "us-east-1")
+
+    # File converter app keys
+    FILE_CONVERTER_URL: str = config("FILE_CONVERTER_URL")
 
 
 # Logger settings
