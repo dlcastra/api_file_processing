@@ -57,8 +57,8 @@ async def remove_file(request: Request, file_id: int, db: AsyncSession = Depends
     return await file_manager.remove_file(file_id, request.session.get("user_id"))
 
 
-@router.post("/convert")
-async def convert_file(request: ConvertFileRequest):
+@router.post("/convert", dependencies=[Depends(blacklist_check)], status_code=201)
+async def convert_file(request: ConvertFileRequest, fapi_req: Request, db: AsyncSession = Depends(get_db)):
     async with httpx.AsyncClient() as client:
         try:
             request_body = {
@@ -69,7 +69,21 @@ async def convert_file(request: ConvertFileRequest):
             }
             response = await client.post(settings.FILE_CONVERTER_URL, json=request_body)
             response.raise_for_status()
-            return {"success": True, "data": response.json()}
+
+            if response.json()["status"] == "success":
+                file_manager = FileManagementService(db)
+
+                file_uuid_code = request.s3_key.split("_")[0]
+                stmt = select(FileModel).filter(FileModel.s3_key.startswith(file_uuid_code))
+                result = await db.execute(stmt)
+                file: FileModel = result.scalar_one_or_none()
+
+                result = await file_manager.download_file(file.id, fapi_req.session.get("user_id"))
+                result["success"] = True
+
+                return result
+
+            return {"success": False, "message": "Error while converting file"}
 
         except httpx.HTTPError as e:
             raise HTTPException(status_code=400, detail=str(e))
