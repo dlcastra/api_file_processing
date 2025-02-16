@@ -16,19 +16,6 @@ services:
     networks:
       - app-network
 
-  file_converter:
-    container_name: file_converter
-    build:
-      context: ./external/services/converter
-      dockerfile: Dockerfile
-    env_file:
-      - .env
-    ports:
-      - "8080:8080"
-    restart: always
-    networks:
-      - app-network
-
   run_db_migrations:
     container_name: db_migrations
     build: .
