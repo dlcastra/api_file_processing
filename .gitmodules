@@ -1,3 +1,6 @@
 [submodule "external/services/converter"]
 	path = external/services/converter
 	url = https://github.com/dlcastra/api_file_converter.git
+[submodule "external/services/analyser"]
+	path = external/services/analyser
+	url = https://github.com/dlcastra/API_TextTonalityAnalysis.git
