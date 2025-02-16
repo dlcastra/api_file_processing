@@ -26,9 +26,9 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", "mock-bucket")
     AWS_REGION: str = config("AWS_REGION", "us-east-1")
 
-    # File converter app keys
+    # External services URLs
     FILE_CONVERTER_URL: str = config("FILE_CONVERTER_URL")
-
+    TONALITY_ANALYSIS_URL: str = config("TONALITY_ANALYSIS_URL")
 
 # Logger settings
 class ColorLogFormatter(logging.Formatter):

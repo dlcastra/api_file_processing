@@ -21,9 +21,26 @@ class ConvertFileRequest(BaseModel):
     format_to: str
 
 
+class FileTonalityAnalysisRequest(BaseModel):
+    s3_key: str
+
+
 class FileConverterResponse(BaseModel):
     file_url: str
     new_s3_key: str
+    status: str
+
+
+class FileTonalityAnalysisResponse(BaseModel):
+    polarity: float
+    subjectivity: float
+    objective_sentiment_score: float
+    polarity_status: str
+    polarity_description: str
+    subjectivity_status: str
+    subjectivity_description: str
+    objective_sentiment_status: str
+    objective_sentiment_description: str
     status: str
 
 
@@ -89,6 +106,25 @@ async def convert_file(request: ConvertFileRequest, fapi_req: Request, db: Async
             raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/tonality-analysis", dependencies=[Depends(blacklist_check)], status_code=201)
+async def process_tonality_analysis(request: FileTonalityAnalysisRequest):
+    async with httpx.AsyncClient() as client:
+        try:
+            request_body = {"s3_key": request.s3_key, "callback_url": "http://main_app:8000/files/analysis-webhook"}
+            response = await client.post(settings.TONALITY_ANALYSIS_URL, json=request_body)
+            response.raise_for_status()
+
+            if response.json()["status"] == "success":
+                result = response.json()
+                result["success"] = True
+                return result
+
+            return {"success": False, "message": "Error while processing file"}
+
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/converter-webhook")
 async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Depends(get_db)):
     if request.status == "success":
@@ -105,3 +141,9 @@ async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Dep
 
         await db.commit()
         return {"message": "File updated successfully"}
+
+
+@router.post("/analysis-webhook")
+async def analysis_webhook(request: FileTonalityAnalysisResponse):
+    if request.status == "success":
+        ...
