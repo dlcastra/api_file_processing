@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.file import File as FileModel
+from app.services.file_management import FileManagementService
 from settings.config import redis
 from settings.database import get_db
 
@@ -41,11 +42,9 @@ class FileTonalityAnalysisResponse(BaseModel):
 
 @router.post("/converter-webhook")
 async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Depends(get_db)):
+    service = FileManagementService(db)
     if request.status == "success":
-        file_uuid_code = request.new_s3_key.split("_")[0]
-        stmt = select(FileModel).filter(FileModel.s3_key.startswith(file_uuid_code))
-        result = await db.execute(stmt)
-        file: FileModel = result.scalar_one_or_none()
+        file = await service.find_file_by_uuid(s3_key=request.new_s3_key)
 
         if not file:
             return {"error": "File not found"}
