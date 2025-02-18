@@ -5,7 +5,10 @@ AWS_SECRET_ACCESS_KEY=...
 AWS_S3_BUCKET_NAME=...
 AWS_REGION=...
 
-INTERNAL_WEBHOOK_URL="http://main_app:8000/files/converter-webhook"
+CONVERTER_WEBHOOK_URL="http://main_app:8000/webhooks/converter-webhook"
+FILE_PARSER_WEBHOOK_URL="http://main_app:8000/webhooks/parser-webhook"
+ANALYSIS_WEBHOOK_URL="http://main_app:8000/webhooks/analysis-webhook"
 
 FILE_CONVERTER_URL="http://file_converter:8080/converter/convert-file"
+FILE_PARSER_URL="http://file_converter:8080/converter/parse-file"
 TONALITY_ANALYSIS_URL="http://tonality_analysis:8030/api/analysis/tonality"
