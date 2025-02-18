@@ -7,13 +7,17 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.status import HTTP_422_UNPROCESSABLE_ENTITY
 
 from app.constants import SESSION_AGE
-from app.routers import auth, files
+from app.routers import auth, files, webhooks
 
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key=config("SECRET_KEY"), session_cookie="session_id", max_age=SESSION_AGE)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"]
+)
+
 app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
 app.include_router(files.router, prefix="/files", tags=["FileProcessing"])
+app.include_router(webhooks.router, prefix="/webhooks", tags=["Webhooks"])
 
 
 @app.exception_handler(RequestValidationError)

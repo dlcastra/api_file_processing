@@ -1,3 +1,5 @@
+import json
+
 import httpx
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.requests import Request
@@ -5,12 +7,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.file import File as FileModel
 from app.services.file_management import FileManagementService
 from app.utils import blacklist_check
-from settings.config import settings
-from settings.database import get_db
 from app.validators.file_validation import FileValidator, invalid_file
-from app.models.file import File as FileModel
+from settings.config import settings, redis
+from settings.database import get_db
 
 router = APIRouter()
 
@@ -25,23 +27,9 @@ class FileTonalityAnalysisRequest(BaseModel):
     s3_key: str
 
 
-class FileConverterResponse(BaseModel):
-    file_url: str
-    new_s3_key: str
-    status: str
-
-
-class FileTonalityAnalysisResponse(BaseModel):
-    polarity: float
-    subjectivity: float
-    objective_sentiment_score: float
-    polarity_status: str
-    polarity_description: str
-    subjectivity_status: str
-    subjectivity_description: str
-    objective_sentiment_status: str
-    objective_sentiment_description: str
-    status: str
+class FileParserRequest(BaseModel):
+    s3_key: str
+    keywords: list[str]
 
 
 @router.get("/storage", dependencies=[Depends(blacklist_check)], status_code=200)
@@ -82,7 +70,7 @@ async def convert_file(request: ConvertFileRequest, fapi_req: Request, db: Async
                 "s3_key": request.s3_key,
                 "format_from": request.format_from,
                 "format_to": request.format_to,
-                "callback_url": settings.INTERNAL_WEBHOOK_URL,
+                "callback_url": settings.CONVERTER_WEBHOOK_URL,
             }
             response = await client.post(settings.FILE_CONVERTER_URL, json=request_body)
             response.raise_for_status()
@@ -106,16 +94,44 @@ async def convert_file(request: ConvertFileRequest, fapi_req: Request, db: Async
             raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/parse-file")
+async def parse_file(request: FileParserRequest):
+    async with httpx.AsyncClient() as client:
+        try:
+            request_body = {
+                "s3_key": request.s3_key,
+                "keywords": request.keywords,
+                "callback_url": settings.FILE_PARSER_WEBHOOK_URL,
+            }
+            response = await client.post(settings.FILE_PARSER_URL, json=request_body)
+            response.raise_for_status()
+
+            cache_key = f"tonality_status:{request.s3_key}"
+            status_data = await redis.get(cache_key)
+            if response.json()["status"] == "success" and status_data:
+                result = json.loads(status_data)
+                result["success"] = True
+                return result
+
+            return {"success": False, "message": "Error while parsing file"}
+
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/tonality-analysis", dependencies=[Depends(blacklist_check)], status_code=201)
 async def process_tonality_analysis(request: FileTonalityAnalysisRequest):
     async with httpx.AsyncClient() as client:
         try:
-            request_body = {"s3_key": request.s3_key, "callback_url": "http://main_app:8000/files/analysis-webhook"}
+            request_body = {"s3_key": request.s3_key, "callback_url": settings.ANALYSIS_WEBHOOK_URL}
             response = await client.post(settings.TONALITY_ANALYSIS_URL, json=request_body)
             response.raise_for_status()
 
-            if response.json()["status"] == "success":
-                result = response.json()
+            cache_key = f"tonality_status:{request.s3_key}"
+            status_data = await redis.get(cache_key)
+            print(response.json())
+            if response.json()["status"] == "success" and status_data:
+                result = json.loads(status_data)
                 result["success"] = True
                 return result
 
@@ -123,27 +139,3 @@ async def process_tonality_analysis(request: FileTonalityAnalysisRequest):
 
         except httpx.HTTPError as e:
             raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/converter-webhook")
-async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Depends(get_db)):
-    if request.status == "success":
-        file_uuid_code = request.new_s3_key.split("_")[0]
-        stmt = select(FileModel).filter(FileModel.s3_key.startswith(file_uuid_code))
-        result = await db.execute(stmt)
-        file: FileModel = result.scalar_one_or_none()
-
-        if not file:
-            return {"error": "File not found"}
-
-        file.s3_url = request.file_url
-        file.s3_key = request.new_s3_key
-
-        await db.commit()
-        return {"message": "File updated successfully"}
-
-
-@router.post("/analysis-webhook")
-async def analysis_webhook(request: FileTonalityAnalysisResponse):
-    if request.status == "success":
-        ...

@@ -18,7 +18,6 @@ class Settings(BaseSettings):
 
     # Database settings
     DATABASE_URL: str = config("DATABASE_URL", local_db)
-    INTERNAL_WEBHOOK_URL: str = config("INTERNAL_WEBHOOK_URL")
 
     # AWS settings
     AWS_ACCESS_KEY_ID: str = config("AWS_ACCESS_KEY_ID", "mock-access-key")
@@ -26,9 +25,16 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", "mock-bucket")
     AWS_REGION: str = config("AWS_REGION", "us-east-1")
 
+    # Internal URLs
+    CONVERTER_WEBHOOK_URL: str = config("CONVERTER_WEBHOOK_URL")
+    FILE_PARSER_WEBHOOK_URL: str = config("FILE_PARSER_WEBHOOK_URL")
+    ANALYSIS_WEBHOOK_URL: str = config("ANALYSIS_WEBHOOK_URL")
+
     # External services URLs
     FILE_CONVERTER_URL: str = config("FILE_CONVERTER_URL")
+    FILE_PARSER_URL: str = config("FILE_PARSER_URL")
     TONALITY_ANALYSIS_URL: str = config("TONALITY_ANALYSIS_URL")
+
 
 # Logger settings
 class ColorLogFormatter(logging.Formatter):
