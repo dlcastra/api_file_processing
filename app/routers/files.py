@@ -1,15 +1,15 @@
 import json
 
-import httpx
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.requests import Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.file_management import FileManagementService
-from app.utils import blacklist_check
+from app.utils import blacklist_check, wait_for_cache
 from app.validators.file_validation import FileValidator, invalid_file
-from settings.config import settings, redis
+from settings.aws_config import sqs_client
+from settings.config import settings
 from settings.database import get_db
 
 router = APIRouter()
@@ -85,27 +85,22 @@ async def convert_file(
         if not is_user_file:
             raise HTTPException(status_code=400, detail="File does not exist")
 
-        request_body = {
-            "s3_key": s3_key,
-            "format_from": request.format_from,
-            "format_to": request.format_to,
-            "callback_url": settings.CONVERTER_WEBHOOK_URL,
-        }
-        async with httpx.AsyncClient() as client:
-            response = await client.post(settings.FILE_CONVERTER_URL, json=request_body)
-            response.raise_for_status()
+        request_body = request.dict()
+        request_body["callback_url"] = settings.CONVERTER_WEBHOOK_URL
+        request_body = json.dumps(request_body)
 
-            if response.json()["status"] == "success":
-                file = await service.find_file_by_uuid(s3_key)
-                result = await service.download_file(file.id, user_id)
-                result["success"] = True
+        response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
 
-                return result
-
+        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
             return {"success": False, "message": "Error while converting file"}
 
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        key_in_cache = await wait_for_cache(s3_key)
+        if key_in_cache:
+            file = await service.find_file_by_uuid(s3_key)
+            result = await service.download_file(file.id, user_id)
+            result["success"] = True
+            return result
+        return {"success": False, "message": "Timeout while waiting for analysis result"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -122,26 +117,21 @@ async def parse_file(
         is_user_file = await service.check_user_file(s3_key=s3_key, user_id=user_id)
         if not is_user_file:
             raise HTTPException(status_code=400, detail="File does not exist")
-        async with httpx.AsyncClient() as client:
-            request_body = {
-                "s3_key": s3_key,
-                "keywords": request.keywords,
-                "callback_url": settings.FILE_PARSER_WEBHOOK_URL,
-            }
-            response = await client.post(settings.FILE_PARSER_URL, json=request_body)
-            response.raise_for_status()
 
-            cache_key = f"tonality_status:{s3_key}"
-            status_data = await redis.get(cache_key)
-            if response.json()["status"] == "success" and status_data:
-                result = json.loads(status_data)
-                result["success"] = True
-                return result
+        request_body = request.dict()
+        request_body["callback_url"] = settings.FILE_PARSER_WEBHOOK_URL
+        request_body = json.dumps(request_body)
 
+        response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
+        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
             return {"success": False, "message": "Error while parsing file"}
 
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        result = await wait_for_cache(s3_key)
+        if result:
+            result["status"] = True
+            return result
+
+        return {"success": False, "message": "Timeout while waiting for analysis result"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -158,23 +148,20 @@ async def process_tonality_analysis(
         if not is_user_file:
             raise HTTPException(status_code=400, detail="File does not exist")
 
-        async with httpx.AsyncClient() as client:
-            request_body = {"s3_key": s3_key, "callback_url": settings.ANALYSIS_WEBHOOK_URL}
-            response = await client.post(settings.TONALITY_ANALYSIS_URL, json=request_body)
-            response.raise_for_status()
+        request_body = request.dict()
+        request_body["callback_url"] = settings.ANALYSIS_WEBHOOK_URL
+        request_body = json.dumps(request_body)
 
-            cache_key = f"tonality_status:{s3_key}"
-            status_data = await redis.get(cache_key)
-            print(response.json())
-            if response.json()["status"] == "success" and status_data:
-                result = json.loads(status_data)
-                result["success"] = True
-                return result
+        response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
+        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
+            return {"success": False, "message": "Error while sending message to the queue"}
 
-            return {"success": False, "message": "Error while processing file"}
+        result = await wait_for_cache(s3_key)
+        if result:
+            result["status"] = True
+            return result
 
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        return {"success": False, "message": "Timeout while waiting for analysis result"}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
