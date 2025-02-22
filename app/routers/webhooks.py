@@ -41,9 +41,10 @@ class FileTonalityAnalysisResponse(BaseModel):
 @router.post("/converter-webhook")
 async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Depends(get_db)):
     service = FileManagementService(db)
+    await add_response_data_to_cache(request.new_s3_key, request.dict())
+
     if request.status == "success":
         file = await service.find_file_by_uuid(s3_key=request.new_s3_key)
-
         if not file:
             return {"error": "File not found"}
 
@@ -51,7 +52,6 @@ async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Dep
         file.s3_key = request.new_s3_key
 
         await db.commit()
-        await add_s3key_to_cache(request.new_s3_key, request.dict())
         return {"message": "File updated successfully"}
 
     return None
@@ -59,21 +59,23 @@ async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Dep
 
 @router.post("/parser-webhook")
 async def parser_webhook(request: FileParserResponse):
+    await add_response_data_to_cache(request.s3_key, request.dict())
+
     if request.status == "success":
-        await add_s3key_to_cache(request.s3_key, request.dict())
         return {"message": "Parsing result cached"}
+    return None
 
 
 @router.post("/analysis-webhook")
 async def analysis_webhook(request: FileTonalityAnalysisResponse):
-    if request.status == "success":
-        await add_s3key_to_cache(request.s3_key, request.dict())
-        return {"message": "Tonality analysis result cached"}
+    await add_response_data_to_cache(request.s3_key, request.dict())
 
+    if request.status == "success":
+        return {"message": "Tonality analysis result cached"}
     return None
 
 
-async def add_s3key_to_cache(s3_key, data):
+async def add_response_data_to_cache(s3_key, data):
     uuid_key = s3_key.split("_")[0]
     cache_key = f"tonality_status:{uuid_key}"
     await redis.setex(cache_key, 60, json.dumps(data))

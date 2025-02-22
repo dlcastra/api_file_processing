@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime, timedelta
+from typing import Tuple, Optional, Dict
 
 from fastapi import HTTPException
 from fastapi.requests import Request
@@ -11,6 +12,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.constants import SESSION_AGE
+from app.models.statuses import ResponseErrorMessage
+from settings.aws_config import sqs_client
 from settings.config import settings, redis
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -82,7 +85,7 @@ async def blacklist_check(request: Request) -> None:
         await redis.delete(key)
 
 
-async def wait_for_cache(s3_key: str, timeout: int = 30, interval: float = 0.5):
+async def wait_for_cache(s3_key: str, timeout: int = 30, interval: float = 0.2) -> dict | None:
     """Waits for the result to appear in the cache with timeout"""
     uuid_key = s3_key.split("_")[0]
     cache_key = f"tonality_status:{uuid_key}"
@@ -91,10 +94,23 @@ async def wait_for_cache(s3_key: str, timeout: int = 30, interval: float = 0.5):
     while (asyncio.get_event_loop().time() - start_time) < timeout:
         status_data = await redis.get(cache_key)
         if status_data:
-            return json.loads(status_data)
+            try:
+                return json.loads(status_data)
+            except json.JSONDecodeError:
+                raise {"message": "Invalid data in cache"}
         await asyncio.sleep(interval)
 
     return None
+
+
+async def send_message_to_sqs(request_body: str) -> Tuple[Optional[Dict[str, str | bool]], bool]:
+    response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
+    status_code = response["ResponseMetadata"]["HTTPStatusCode"]
+    if status_code != 200:
+        return {"success": False, "message": ResponseErrorMessage.QUEUE_ERROR}, False
+    elif "MessageId" not in response:
+        return {"success": False, "message": ResponseErrorMessage.SQS_ENQUEUE_TASK_ERROR}, False
+    return None, True
 
 
 async def check_cache(redis_url):
