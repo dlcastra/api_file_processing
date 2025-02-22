@@ -4,13 +4,16 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException
 from fastapi.requests import Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse
 
+from app.models.statuses import ResponseErrorMessage
 from app.services.file_management import FileManagementService
-from app.utils import blacklist_check, wait_for_cache
+from app.services.generator import ResponseGeneratorService
+from app.utils import blacklist_check, wait_for_cache, send_message_to_sqs
 from app.validators.file_validation import FileValidator, invalid_file
-from settings.aws_config import sqs_client
 from settings.config import settings
 from settings.database import get_db
+from settings.config import logger
 
 router = APIRouter()
 
@@ -39,7 +42,8 @@ async def files_history(request: Request, service: FileManagementService = Depen
     try:
         return await service.get_files_history(request.session.get("user_id"))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"File History Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=ResponseErrorMessage.INTERNAL_ERROR)
 
 
 @router.post("/upload", dependencies=[Depends(blacklist_check)], status_code=201)
@@ -48,13 +52,15 @@ async def upload_file(
 ):
     is_valid_file = FileValidator().validate_file(file)
     if not is_valid_file:
+        logger.warning("File Upload Validation Error", exc_info=True)
         raise HTTPException(status_code=400, detail=invalid_file)
 
     try:
         user_id: int = request.session.get("user_id")
         return await service.add_file(file, user_id)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"File Upload Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=ResponseErrorMessage.INTERNAL_ERROR)
 
 
 @router.get("/download/{file_id}", dependencies=[Depends(blacklist_check)], status_code=200)
@@ -62,7 +68,8 @@ async def download_file(request: Request, file_id: int, service: FileManagementS
     try:
         return await service.download_file(file_id, request.session.get("user_id"))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"File Download Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=ResponseErrorMessage.INTERNAL_ERROR)
 
 
 @router.delete("/remove/{file_id}", dependencies=[Depends(blacklist_check)], status_code=204)
@@ -70,7 +77,8 @@ async def remove_file(request: Request, file_id: int, service: FileManagementSer
     try:
         return await service.remove_file(file_id, request.session.get("user_id"))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"File Remove Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=ResponseErrorMessage.INTERNAL_ERROR)
 
 
 @router.post("/convert", dependencies=[Depends(blacklist_check)], status_code=201)
@@ -79,31 +87,29 @@ async def convert_file(
 ):
     s3_key = request.s3_key
     user_id = fapi_req.session.get("user_id")
+    response_generator = ResponseGeneratorService(file_manager_service=service)
 
     try:
         is_user_file = await service.check_user_file(s3_key=s3_key, user_id=user_id)
         if not is_user_file:
-            raise HTTPException(status_code=400, detail="File does not exist")
+            logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
+            return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
         request_body = request.dict()
         request_body["callback_url"] = settings.CONVERTER_WEBHOOK_URL
         request_body = json.dumps(request_body)
 
-        response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
+        message, is_sent = await send_message_to_sqs(request_body)
+        if not is_sent:
+            logger.error(message)
+            return JSONResponse(status_code=500, content={"message": message})
 
-        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
-            return {"success": False, "message": "Error while converting file"}
-
-        key_in_cache = await wait_for_cache(s3_key)
-        if key_in_cache:
-            file = await service.find_file_by_uuid(s3_key)
-            result = await service.download_file(file.id, user_id)
-            result["success"] = True
-            return result
-        return {"success": False, "message": "Timeout while waiting for analysis result"}
+        cashed_data = await wait_for_cache(s3_key)
+        return await response_generator.generate_response(cashed_data, use_s3=True)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"File converter error: {e}")
+        raise HTTPException(status_code=500, detail=ResponseErrorMessage.INTERNAL_ERROR)
 
 
 @router.post("/parse-file")
@@ -112,29 +118,29 @@ async def parse_file(
 ):
     s3_key = request.s3_key
     user_id = fapi_req.session.get("user_id")
+    response_generator = ResponseGeneratorService()
 
     try:
         is_user_file = await service.check_user_file(s3_key=s3_key, user_id=user_id)
         if not is_user_file:
-            raise HTTPException(status_code=400, detail="File does not exist")
+            logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
+            return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
         request_body = request.dict()
         request_body["callback_url"] = settings.FILE_PARSER_WEBHOOK_URL
         request_body = json.dumps(request_body)
 
-        response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
-        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
-            return {"success": False, "message": "Error while parsing file"}
+        message, is_sent = await send_message_to_sqs(request_body)
+        if not is_sent:
+            logger.error(message)
+            return JSONResponse(status_code=500, content={"message": message})
 
-        result = await wait_for_cache(s3_key)
-        if result:
-            result["status"] = True
-            return result
-
-        return {"success": False, "message": "Timeout while waiting for analysis result"}
+        cashed_data = await wait_for_cache(s3_key)
+        return await response_generator.generate_response(cashed_data)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"File parser error {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=ResponseErrorMessage.INTERNAL_ERROR)
 
 
 @router.post("/tonality-analysis", dependencies=[Depends(blacklist_check)], status_code=201)
@@ -143,25 +149,26 @@ async def process_tonality_analysis(
 ):
     s3_key = request.s3_key
     user_id = fapi_req.session.get("user_id")
+    response_generator = ResponseGeneratorService()
+
     try:
         is_user_file = await service.check_user_file(s3_key=s3_key, user_id=user_id)
         if not is_user_file:
-            raise HTTPException(status_code=400, detail="File does not exist")
+            logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
+            return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
         request_body = request.dict()
         request_body["callback_url"] = settings.ANALYSIS_WEBHOOK_URL
         request_body = json.dumps(request_body)
 
-        response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
-        if response["ResponseMetadata"]["HTTPStatusCode"] != 200:
-            return {"success": False, "message": "Error while sending message to the queue"}
+        message, is_sent = await send_message_to_sqs(request_body)
+        if not is_sent:
+            logger.error(message)
+            return JSONResponse(status_code=500, content={"message": message})
 
-        result = await wait_for_cache(s3_key)
-        if result:
-            result["status"] = True
-            return result
-
-        return {"success": False, "message": "Timeout while waiting for analysis result"}
+        cashed_data = await wait_for_cache(s3_key)
+        return await response_generator.generate_response(cashed_data)
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"File tonality analysis error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=ResponseErrorMessage.INTERNAL_ERROR)
