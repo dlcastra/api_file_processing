@@ -20,7 +20,11 @@ class AuthService:
             raise HTTPException(status_code=400, detail="User already exists")
 
         hashed_password = self.auth_util.hash_password(user_data["password"])
-        new_user = User(username=user_data["username"], email=user_data["email"], password=hashed_password)
+        new_user = User(
+            username=user_data["username"],
+            email=user_data["email"],
+            password=hashed_password,
+        )
 
         self.db.add(new_user)
         try:

@@ -2,10 +2,9 @@ import json
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.file import File as FileModel
+from app.services.file_management import FileManagementService
 from settings.config import redis
 from settings.database import get_db
 
@@ -41,12 +40,11 @@ class FileTonalityAnalysisResponse(BaseModel):
 
 @router.post("/converter-webhook")
 async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Depends(get_db)):
-    if request.status == "success":
-        file_uuid_code = request.new_s3_key.split("_")[0]
-        stmt = select(FileModel).filter(FileModel.s3_key.startswith(file_uuid_code))
-        result = await db.execute(stmt)
-        file: FileModel = result.scalar_one_or_none()
+    service = FileManagementService(db)
+    await add_response_data_to_cache(request.new_s3_key, request.dict())
 
+    if request.status == "success":
+        file = await service.find_file_by_uuid(s3_key=request.new_s3_key)
         if not file:
             return {"error": "File not found"}
 
@@ -61,19 +59,23 @@ async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Dep
 
 @router.post("/parser-webhook")
 async def parser_webhook(request: FileParserResponse):
+    await add_response_data_to_cache(request.s3_key, request.dict())
+
     if request.status == "success":
-        cache_key = f"tonality_status:{request.s3_key}"
-        data = request.dict()
-        await redis.setex(cache_key, 300, json.dumps(data))
         return {"message": "Parsing result cached"}
+    return None
 
 
 @router.post("/analysis-webhook")
 async def analysis_webhook(request: FileTonalityAnalysisResponse):
-    if request.status == "success":
-        cache_key = f"tonality_status:{request.s3_key}"
-        data = request.dict()
-        await redis.setex(cache_key, 300, json.dumps(data))
-        return {"message": "Tonality analysis result cached"}
+    await add_response_data_to_cache(request.s3_key, request.dict())
 
+    if request.status == "success":
+        return {"message": "Tonality analysis result cached"}
     return None
+
+
+async def add_response_data_to_cache(s3_key, data):
+    uuid_key = s3_key.split("_")[0]
+    cache_key = f"tonality_status:{uuid_key}"
+    await redis.setex(cache_key, 60, json.dumps(data))
