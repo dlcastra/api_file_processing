@@ -1,4 +1,6 @@
-from app.models.statuses import ResponseErrorMessage, ProcessingStatus
+from starlette.responses import JSONResponse
+
+from src.app.responses.statuses import ResponseErrorMessage, ProcessingStatus
 
 
 class ResponseGeneratorService:
@@ -8,7 +10,7 @@ class ResponseGeneratorService:
 
     async def generate_response(self, data: dict, use_s3: bool = False):
         if data is None:
-            return {"message": ResponseErrorMessage.TIMEOUT_ERROR}
+            return JSONResponse(status_code=504, content={"message": ResponseErrorMessage.TIMEOUT_ERROR})
 
         self._data = data
         return await self._generate_response(use_s3)

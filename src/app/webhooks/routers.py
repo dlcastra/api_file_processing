@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.file_management import FileManagementService
-from settings.config import redis
-from settings.database import get_db
+from src.app.file_management.services import FileManagementService
+from src.settings.config import redis
+from src.settings.database import get_db
 
 router = APIRouter()
 

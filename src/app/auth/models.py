@@ -5,7 +5,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from settings.database import Base
+from src.settings.database import Base
 
 
 class User(Base):
@@ -20,7 +20,7 @@ class User(Base):
     totp_secret = Column(String, unique=True, default="")
     is_2fa_enabled = Column(Boolean, default=False)
 
-    files = relationship("file.File", back_populates="owner")
+    files = relationship("src.app.file_management.models.File", back_populates="owner")
 
 
 class UserCreate(BaseModel):

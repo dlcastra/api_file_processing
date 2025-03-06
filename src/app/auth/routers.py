@@ -9,12 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import UserCreate, UserLogin, User
-from app.services.auth import AuthService, store_session
-from app.utils import add_to_blacklist, blacklist_check
-from app.validators.password_validation import PasswordValidator, invalid_password
-from settings.config import redis, templates
-from settings.database import get_db
+from src.app.auth.models import UserCreate, UserLogin, User
+from src.app.auth.services import AuthService
+from src.app.auth.utils import add_to_blacklist, blacklist_check, store_session
+from src.app.validators.password_validation import PasswordValidator, invalid_password
+from src.settings.config import redis, templates
+from src.settings.database import get_db
 
 router = APIRouter()
 

@@ -6,14 +6,16 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
-from app.models.statuses import ResponseErrorMessage
-from app.services.file_management import FileManagementService
-from app.services.generator import ResponseGeneratorService
-from app.utils import blacklist_check, wait_for_cache, send_message_to_sqs
-from app.validators.file_validation import FileValidator, invalid_file
-from settings.config import settings
-from settings.database import get_db
-from settings.config import logger
+from src.app.auth.utils import blacklist_check
+from src.app.aws.utils import send_message_to_sqs
+from src.app.file_management.services import FileManagementService
+from src.app.responses.generator import ResponseGeneratorService
+from src.app.responses.statuses import ResponseErrorMessage
+from src.app.validators.file_validation import FileValidator, invalid_file
+from src.app.webhooks.utils import wait_for_cache
+from src.settings.config import logger
+from src.settings.config import settings
+from src.settings.database import get_db
 
 router = APIRouter()
 

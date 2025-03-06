@@ -1,14 +1,3 @@
-invalid_password = {
-    "password": "Not a reliable password.",
-    "password scheme": {
-        "capital_letter": "At least once capital letter is required.",
-        "numeric": "At least once numeric is required.",
-        "cannot_be_used": "Username, email.",
-        "spaces": "Password must not contain spaces.",
-    },
-}
-
-
 class PasswordValidator:
     """
     Manages and validates password constraints for a given set of user attributes.
@@ -107,3 +96,14 @@ class PasswordValidator:
             return any(suffix in line for line in response.text.splitlines())
         except Exception:
             return False
+
+
+invalid_password = {
+    "password": "Not a reliable password.",
+    "password scheme": {
+        "capital_letter": "At least once capital letter is required.",
+        "numeric": "At least once numeric is required.",
+        "cannot_be_used": "Username, email.",
+        "spaces": "Password must not contain spaces.",
+    },
+}

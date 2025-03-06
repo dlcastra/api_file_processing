@@ -6,10 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.responses import JSONResponse
 
-from app.models import File as FileModel
-from app.models.statuses import ResponseErrorMessage
-from settings.aws_config import s3_client
-from settings.config import settings, logger
+from src.app.file_management.models import File as FileModel
+from src.app.responses.statuses import ResponseErrorMessage
+from src.app.aws.clients import s3_client
+from src.settings.config import settings, logger
 
 
 class FileManagementService:

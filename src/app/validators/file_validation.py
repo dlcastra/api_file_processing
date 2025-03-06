@@ -1,4 +1,4 @@
-from app.constants import MAX_FILE_SIZE_BYTES, SUPPORTED_FORMATS
+from src.app.constants import MAX_FILE_SIZE_BYTES, SUPPORTED_FORMATS
 
 
 class FileValidator:

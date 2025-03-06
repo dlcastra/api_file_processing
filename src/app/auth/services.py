@@ -2,9 +2,8 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.user import User
-from app.utils import AuthUtils
-from app.constants import SESSION_AGE
+from src.app.auth.models import User
+from src.app.auth.utils import AuthUtils
 
 
 class AuthService:
@@ -45,8 +44,3 @@ class AuthService:
             return None
 
         return user
-
-
-async def store_session(redis, user_id, session_id):
-    key = f"user:{user_id}:session:{session_id}"
-    await redis.set(key, "active", ex=SESSION_AGE)
