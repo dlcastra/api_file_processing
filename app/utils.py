@@ -107,9 +107,9 @@ async def send_message_to_sqs(request_body: str) -> Tuple[Optional[Dict[str, str
     response = sqs_client.send_message(QueueUrl=settings.AWS_SQS_QUEUE_URL, MessageBody=request_body)
     status_code = response["ResponseMetadata"]["HTTPStatusCode"]
     if status_code != 200:
-        return {"success": False, "message": ResponseErrorMessage.QUEUE_ERROR}, False
+        return {"success": False, "message": ResponseErrorMessage.AWS_QUEUE_ERROR}, False
     elif "MessageId" not in response:
-        return {"success": False, "message": ResponseErrorMessage.SQS_ENQUEUE_TASK_ERROR}, False
+        return {"success": False, "message": ResponseErrorMessage.AWS_SQS_ENQUEUE_TASK_ERROR}, False
     return None, True
 
 

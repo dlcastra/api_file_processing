@@ -7,8 +7,11 @@ class ResponseErrorMessage(str, Enum):
     FILE_PROCESSING_ERROR = "An error occurred while processing file"
 
     # AWS error responses
-    QUEUE_ERROR = "Error while sending message to the queue"
-    SQS_ENQUEUE_TASK_ERROR = "Failed to enqueue task in SQS"
+    AWS_MISSED_DOWNLOAD_AGS = "Either s3_key or (file_id and user_id) must be provided"
+    AWS_QUEUE_ERROR = "Error while sending message to the queue"
+    AWS_SQS_ENQUEUE_TASK_ERROR = "Failed to enqueue task in SQS"
+    AWS_MISSED_CREDENTIALS = "AWS credentials not found"
+    AWS_INCOMPLETE_CREDENTIALS = "Incomplete AWS credentials"
 
     # Webhook error
     TIMEOUT_ERROR = "Timeout while waiting for analysis result"

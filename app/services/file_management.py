@@ -4,10 +4,12 @@ from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import JSONResponse
 
 from app.models import File as FileModel
+from app.models.statuses import ResponseErrorMessage
 from settings.aws_config import s3_client
-from settings.config import settings
+from settings.config import settings, logger
 
 
 class FileManagementService:
@@ -51,7 +53,7 @@ class FileManagementService:
         file = None
 
         if not s3_key and (not file_id or not user_id):
-            raise HTTPException(status_code=400, detail="Either s3_key or (file_id and user_id) must be provided")
+            return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.AWS_MISSED_DOWNLOAD_AGS})
 
         if not s3_key:
             stmt = select(FileModel).filter(FileModel.id == file_id, FileModel.user_id == user_id)
@@ -59,7 +61,7 @@ class FileManagementService:
             file = result.scalar_one_or_none()
 
             if not file:
-                raise HTTPException(status_code=404, detail="File does not exist")
+                return JSONResponse(status_code=404, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
         try:
             presigned_url = self.s3_client.generate_presigned_url(
@@ -70,10 +72,13 @@ class FileManagementService:
             return {"file_url": presigned_url}
 
         except NoCredentialsError:
-            return {"status": "error", "message": "AWS credentials not found"}
+            logger.error(ResponseErrorMessage.AWS_MISSED_CREDENTIALS, exc_info=True)
+            return {"status": "error", "message": ResponseErrorMessage.INTERNAL_ERROR}
         except PartialCredentialsError:
-            return {"status": "error", "message": "Incomplete AWS credentials"}
+            logger.error(ResponseErrorMessage.AWS_INCOMPLETE_CREDENTIALS, exc_info=True)
+            return {"status": "error", "message": ResponseErrorMessage.INTERNAL_ERROR}
         except Exception as e:
+            logger.error(f"Unexpected download error: {str(e)}", exc_info=True)
             return {"status": "error", "message": str(e)}
 
     async def remove_file(self, file_id: int, user_id: int):
@@ -87,10 +92,13 @@ class FileManagementService:
         try:
             self.s3_client.delete_object(Bucket=self.bucket, Key=file.s3_key)
         except NoCredentialsError:
-            return {"status": "error", "message": "AWS credentials not found"}
+            logger.error(ResponseErrorMessage.AWS_MISSED_CREDENTIALS, exc_info=True)
+            return {"status": "error", "message": ResponseErrorMessage.INTERNAL_ERROR}
         except PartialCredentialsError:
-            return {"status": "error", "message": "Incomplete AWS credentials"}
+            logger.error(ResponseErrorMessage.AWS_INCOMPLETE_CREDENTIALS, exc_info=True)
+            return {"status": "error", "message": ResponseErrorMessage.INTERNAL_ERROR}
         except Exception as e:
+            logger.error(f"Unexpected download error: {str(e)}", exc_info=True)
             return {"status": "error", "message": str(e)}
 
         try:
@@ -104,7 +112,14 @@ class FileManagementService:
     async def check_user_file(self, s3_key: str, user_id: int) -> bool:
         stmt = select(FileModel).filter(FileModel.s3_key == s3_key, FileModel.user_id == user_id)
         result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
+        file = result.scalar_one_or_none()
+        return file is not None
+
+    async def validate_file_access(self, s3_key: str, user_id: int) -> JSONResponse | None:
+        is_user_file = await self.check_user_file(s3_key=s3_key, user_id=user_id)
+        if not is_user_file:
+            logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
+            return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
     async def find_file_by_uuid(self, s3_key: str) -> FileModel | None:
         file_uuid_code = s3_key.split("_")[0]
@@ -117,13 +132,15 @@ class FileManagementService:
     async def _upload_to_s3(self, file_name: str, file_content: bytes):
         try:
             self.s3_client.put_object(Bucket=self.bucket, Key=file_name, Body=file_content)
-
             file_url = f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{file_name}"
             return {"status": "success", "file_url": file_url}
 
         except NoCredentialsError:
-            return {"status": "error", "message": "AWS credentials not found"}
+            logger.error(ResponseErrorMessage.AWS_MISSED_CREDENTIALS, exc_info=True)
+            return {"status": "error", "message": ResponseErrorMessage.INTERNAL_ERROR}
         except PartialCredentialsError:
-            return {"status": "error", "message": "Incomplete AWS credentials"}
+            logger.error(ResponseErrorMessage.AWS_INCOMPLETE_CREDENTIALS, exc_info=True)
+            return {"status": "error", "message": ResponseErrorMessage.INTERNAL_ERROR}
         except Exception as e:
+            logger.error(f"Unexpected download error: {str(e)}", exc_info=True)
             return {"status": "error", "message": str(e)}
