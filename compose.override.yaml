@@ -2,7 +2,7 @@ services:
   file_converter:
     container_name: file_converter
     build:
-      context: ./external/services/converter
+      context: src/external/services/converter
       dockerfile: Dockerfile
     env_file:
       - .env
@@ -15,7 +15,7 @@ services:
   tonality_analysis:
     container_name: tonality_analysis
     build:
-      context: ./external/services/analyser
+      context: src/external/services/analyser
       dockerfile: Dockerfile
     env_file:
       - .env

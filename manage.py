@@ -4,8 +4,8 @@ import uuid
 import typer
 from passlib.hash import bcrypt
 
-from settings.config import logger
-from management.utils import ShellCommandLogs, run_command
+from src.settings.config import logger
+from src.management.utils import ShellCommandLogs, run_command
 
 app = typer.Typer()
 shell_logger = ShellCommandLogs()
