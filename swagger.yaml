@@ -1,0 +1,880 @@
+openapi: 3.1.0
+info:
+  title: File Processing & Analysis API
+  description: |
+    Service for user authentication, file storage, conversion, parsing, and tonality (sentiment) analysis.
+    Authentication uses a server-side session (cookie). After successful /auth/login the client must
+    persist the Set-Cookie header for subsequent protected requests.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Local development
+tags:
+  - name: Authentication
+    description: User registration, login, session management and 2FA operations.
+  - name: FileProcessing
+    description: File lifecycle operations - upload, list, download, delete, convert, parse, tonality analysis.
+  - name: Webhooks
+    description: Internal callback endpoints invoked by async workers. Not for public/direct client use.
+
+paths:
+  /auth/registration:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      description: |
+        Creates a new user account. Password must satisfy server-side complexity rules.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+            examples:
+              valid:
+                value:
+                  username: "alice"
+                  email: "alice@example.com"
+                  password: "Str0ng_Pass!"
+                  confirm_password: "Str0ng_Pass!"
+      responses:
+        '201':
+            description: Registration successful
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/MessageResponse'
+                examples:
+                  success:
+                    value:
+                      message: Registration successfully completed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                exists:
+                  value:
+                    detail: "User already exists"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login and establish session
+      description: |
+        Authenticates the user. If 2FA is enabled, a valid TOTP code must be provided.
+        On success returns a message and sets a session cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+            examples:
+              basic:
+                value:
+                  username: "alice"
+                  password: "Str0ng_Pass!"
+              with_2fa:
+                value:
+                  username: "alice"
+                  password: "Str0ng_Pass!"
+                  totp_code: "123456"
+      responses:
+        '201':
+          description: Login successful
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+              description: Session cookie; send with subsequent requests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                success:
+                  value:
+                    message: "Login successful"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout current session
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                success:
+                  value:
+                    message: "Logout successful"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout-others:
+    post:
+      tags: [Authentication]
+      summary: Invalidate all other active sessions
+      description: Logs out every other session of the current user except the caller session.
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: Operation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  count:
+                    type: string
+                    description: Number of other sessions terminated (if any).
+              examples:
+                terminated:
+                  value:
+                    message: "Logout others successfully"
+                    count: "2"
+                none:
+                  value:
+                    message: "No external sessions"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/enable-2fa:
+    post:
+      tags: [Authentication]
+      summary: Enable TOTP-based 2FA
+      description: |
+        Generates a new TOTP secret and returns an HTML page with a QR code (Base64 image)
+        for enrollment in an authenticator app.
+      security:
+        - cookieAuth: []
+      responses:
+        '201':
+          description: HTML page containing QR code
+          content:
+            text/html:
+              schema:
+                type: string
+              examples:
+                qrPage:
+                  value: "<html>...embedded QR...</html>"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /auth/disable-2fa:
+    post:
+      tags: [Authentication]
+      summary: Disable 2FA
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: 2FA disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                disabled:
+                  value:
+                    message: "Successfully disabled 2FA"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/storage:
+    get:
+      tags: [FileProcessing]
+      summary: List user file history
+      security:
+        - cookieAuth: []
+      responses:
+        '200':
+          description: List of user files
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FileMetadata'
+              examples:
+                list:
+                  value:
+                    - id: 12
+                      filename: "report.pdf"
+                      s3_key: "550e8400-report.pdf"
+                      s3_url: "https://bucket.s3.eu-central-1.amazonaws.com/550e8400-report.pdf"
+                      size: 48219
+                      content_type: "application/pdf"
+                      uploaded_at: "2025-08-20T10:12:45Z"
+                    - id: 13
+                      filename: "notes.txt"
+                      s3_key: "a12bc330-notes.txt"
+                      s3_url: "https://bucket.s3.eu-central-1.amazonaws.com/a12bc330-notes.txt"
+                      size: 912
+                      content_type: "text/plain"
+                      uploaded_at: "2025-08-20T10:15:05Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/upload:
+    post:
+      tags: [FileProcessing]
+      summary: Upload a file
+      description: |
+        Accepts a file for storage and later processing. Validates file type/size server-side.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileMetadata'
+              examples:
+                uploaded:
+                  value:
+                    id: 21
+                    filename: "dataset.csv"
+                    s3_key: "4c1d2ab3-dataset.csv"
+                    s3_url: "https://bucket.s3.eu-central-1.amazonaws.com/4c1d2ab3-dataset.csv"
+                    size: 1048576
+                    content_type: "text/csv"
+                    uploaded_at: "2025-08-21T09:01:11Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/download/{file_id}:
+    get:
+      tags: [FileProcessing]
+      summary: Download a file
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Internal file identifier.
+      responses:
+        '200':
+          # NOTE: Runtime returns JSON with presigned URL; example reflects actual behavior.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file_url:
+                    type: string
+                    format: uri
+              examples:
+                presigned:
+                  value:
+                    file_url: "https://bucket.s3.eu-central-1.amazonaws.com/4c1d2ab3-dataset.csv?X-Amz-SignedHeaders=..."
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/remove/{file_id}:
+    delete:
+      tags: [FileProcessing]
+      summary: Delete a file
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: file_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: File removed (no content)
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/convert:
+    post:
+      tags: [FileProcessing]
+      summary: Convert a file format
+      description: |
+        Initiates asynchronous conversion (format_from -> format_to). Waits for webhook-cached result
+        before responding. Uses SQS queue and internal webhook.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertFileRequest'
+            examples:
+              convertDocxToPdf:
+                value:
+                  s3_key: "550e8400-report.docx"
+                  format_from: "docx"
+                  format_to: "pdf"
+      responses:
+        '201':
+          description: Conversion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileConversionResult'
+              examples:
+                success:
+                  value:
+                    file_url: "https://bucket.s3.eu-central-1.amazonaws.com/550e8400-report.pdf"
+                    new_s3_key: "550e8400-report.pdf"
+                    status: "success"
+                    message: null
+                failed:
+                  value:
+                    file_url: null
+                    new_s3_key: "550e8400-report.pdf"
+                    status: "failed"
+                    message: "Unsupported format"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/parse-file:
+    post:
+      tags: [FileProcessing]
+      summary: Parse file content (keyword extraction / segmentation)
+      description: |
+        Launches asynchronous parsing. Returns cached result once webhook updates cache.
+        (Note: This route currently lacks explicit auth dependency; add security if intended.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileParserRequest'
+            examples:
+              parseKeywords:
+                value:
+                  s3_key: "4c1d2ab3-dataset.txt"
+                  keywords: ["revenue", "forecast", "q3"]
+      responses:
+        '200':
+          description: Parsing result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileParserResponse'
+              examples:
+                parsed:
+                  value:
+                    count: 3
+                    sentences:
+                      - "Q3 revenue increased by 20%."
+                      - "Forecast indicates further growth."
+                      - "Revenue drivers include new markets."
+                    s3_key: "4c1d2ab3-dataset.txt"
+                    status: "success"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /files/tonality-analysis:
+    post:
+      tags: [FileProcessing]
+      summary: Perform tonality (sentiment) analysis
+      description: |
+        Executes asynchronous sentiment analysis; waits for webhook populated cache and returns metrics.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileTonalityAnalysisRequest'
+            examples:
+              analyze:
+                value:
+                  s3_key: "marketing_summary.txt"
+      responses:
+        '201':
+          description: Tonality analysis result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileTonalityAnalysisResponse'
+              examples:
+                success:
+                  value:
+                    s3_key: "marketing_summary.txt"
+                    polarity: 0.42
+                    subjectivity: 0.61
+                    objective_sentiment_score: 0.38
+                    polarity_status: "moderate_positive"
+                    polarity_description: "Overall positive tone"
+                    subjectivity_status: "mixed_subjective"
+                    subjectivity_description: "Contains both facts and opinions"
+                    objective_sentiment_status: "balanced"
+                    objective_sentiment_description: "Neutral / balanced"
+                    status: "success"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/converter-webhook:
+    post:
+      tags: [Webhooks]
+      summary: Internal converter callback
+      description: Receives conversion result and updates file metadata. Not publicly accessible.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileConverterWebhook'
+            examples:
+              callbackSuccess:
+                value:
+                  file_url: "https://bucket.s3.eu-central-1.amazonaws.com/550e8400-report.pdf"
+                  new_s3_key: "550e8400-report.pdf"
+                  status: "success"
+              callbackFailed:
+                value:
+                  new_s3_key: "550e8400-report.pdf"
+                  status: "failed"
+      responses:
+        '200':
+          description: File updated or acknowledged
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+              examples:
+                ack:
+                  value:
+                    message: "Conversion cached"
+        '204':
+          description: No action (non-success status)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/parser-webhook:
+    post:
+      tags: [Webhooks]
+      summary: Internal parser callback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileParserResponse'
+            examples:
+              webhookParsed:
+                value:
+                  count: 5
+                  sentences:
+                    - "Sentence A"
+                    - "Sentence B"
+                    - "Sentence C"
+                    - "Sentence D"
+                    - "Sentence E"
+                  s3_key: "4c1d2ab3-dataset.txt"
+                  status: "success"
+      responses:
+        '200':
+          description: Parsing cached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '204':
+          description: No action
+
+  /webhooks/analysis-webhook:
+    post:
+      tags: [Webhooks]
+      summary: Internal tonality analysis callback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FileTonalityAnalysisResponse'
+            examples:
+              webhookAnalysis:
+                value:
+                  s3_key: "marketing_summary.txt"
+                  polarity: -0.1
+                  subjectivity: 0.75
+                  objective_sentiment_score: 0.25
+                  polarity_status: "slightly_negative"
+                  polarity_description: "Mild negative tone"
+                  subjectivity_status: "subjective"
+                  subjectivity_description: "Contains many opinions"
+                  objective_sentiment_status: "low_objectivity"
+                  objective_sentiment_description: "Few factual statements"
+                  status: "success"
+      responses:
+        '200':
+          description: Analysis cached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '204':
+          description: No action
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session_id
+      description: Session cookie set after /auth/login.
+
+  schemas:
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+      required: [message]
+      example:
+        message: "Operation completed"
+    ErrorResponse:
+      type: object
+      properties:
+        detail:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                  msg:
+                    type: string
+      required: [detail]
+      example:
+        detail: "Invalid request"
+    UserCreate:
+      type: object
+      properties:
+        username:
+          type: string
+          minLength: 3
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+        confirm_password:
+          type: string
+          format: password
+      required: [username, email, password, confirm_password]
+      example:
+        username: "alice"
+        email: "alice@example.com"
+        password: "Str0ng_Pass!"
+        confirm_password: "Str0ng_Pass!"
+    UserLogin:
+      type: object
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+        totp_code:
+          type: string
+          description: 6-digit TOTP code if 2FA enabled.
+      required: [username, password]
+      example:
+        username: "alice"
+        password: "Str0ng_Pass!"
+        totp_code: "123456"
+    FileMetadata:
+      type: object
+      description: Metadata about a stored file.
+      properties:
+        id:
+          type: integer
+        filename:
+          type: string
+        s3_key:
+          type: string
+        s3_url:
+          type: string
+          format: uri
+        size:
+          type: integer
+          description: File size in bytes
+        content_type:
+          type: string
+        uploaded_at:
+          type: string
+          format: date-time
+      example:
+        id: 42
+        filename: "data.json"
+        s3_key: "a1b2c3d4-data.json"
+        s3_url: "https://bucket.s3.eu-central-1.amazonaws.com/a1b2c3d4-data.json"
+        size: 2048
+        content_type: "application/json"
+        uploaded_at: "2025-08-21T09:30:00Z"
+    ConvertFileRequest:
+      type: object
+      properties:
+        s3_key:
+          type: string
+        format_from:
+          type: string
+        format_to:
+          type: string
+      required: [s3_key, format_from, format_to]
+      example:
+        s3_key: "a1b2c3d4-report.docx"
+        format_from: "docx"
+        format_to: "pdf"
+    FileConversionResult:
+      type: object
+      properties:
+        file_url:
+          type: string
+          format: uri
+        new_s3_key:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, pending]
+        message:
+          type: string
+          nullable: true
+      example:
+        file_url: "https://bucket.s3.eu-central-1.amazonaws.com/a1b2c3d4-report.pdf"
+        new_s3_key: "a1b2c3d4-report.pdf"
+        status: "success"
+        message: null
+    FileParserRequest:
+      type: object
+      properties:
+        s3_key:
+          type: string
+        keywords:
+          type: array
+          items:
+            type: string
+      required: [s3_key, keywords]
+      example:
+        s3_key: "4c1d2ab3-dataset.txt"
+        keywords: ["revenue", "forecast", "q3"]
+    FileParserResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+        sentences:
+          type: array
+          items:
+            type: string
+        s3_key:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, pending]
+      example:
+        count: 3
+        sentences:
+          - "Q3 revenue increased by 20%."
+          - "Forecast indicates further growth."
+          - "Revenue drivers include new markets."
+        s3_key: "4c1d2ab3-dataset.txt"
+        status: "success"
+    FileTonalityAnalysisRequest:
+      type: object
+      properties:
+        s3_key:
+          type: string
+      required: [s3_key]
+      example:
+        s3_key: "marketing_summary.txt"
+    FileTonalityAnalysisResponse:
+      type: object
+      properties:
+        s3_key:
+          type: string
+        polarity:
+          type: number
+          format: float
+        subjectivity:
+          type: number
+          format: float
+        objective_sentiment_score:
+            type: number
+            format: float
+        polarity_status:
+          type: string
+        polarity_description:
+          type: string
+        subjectivity_status:
+          type: string
+        subjectivity_description:
+          type: string
+        objective_sentiment_status:
+          type: string
+        objective_sentiment_description:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, pending]
+      example:
+        s3_key: "marketing_summary.txt"
+        polarity: 0.42
+        subjectivity: 0.61
+        objective_sentiment_score: 0.38
+        polarity_status: "moderate_positive"
+        polarity_description: "Overall positive tone"
+        subjectivity_status: "mixed_subjective"
+        subjectivity_description: "Contains both facts and opinions"
+        objective_sentiment_status: "balanced"
+        objective_sentiment_description: "Neutral / balanced"
+        status: "success"
+    FileConverterWebhook:
+      type: object
+      properties:
+        file_url:
+          type: string
+          format: uri
+        new_s3_key:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, pending]
+      required: [new_s3_key, status]
+      example:
+        file_url: "https://bucket.s3.eu-central-1.amazonaws.com/a1b2c3d4-report.pdf"
+        new_s3_key: "a1b2c3d4-report.pdf"
+        status: "success"
+
+  responses:
+    BadRequest:
+      description: Bad request / validation failure
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        examples:
+          invalidPayload:
+            value:
+              detail: "Invalid request payload"
+          fileNotOwned:
+            value:
+              detail: "File does not exist"
+    Unauthorized:
+      description: Authentication required or invalid session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        examples:
+          notAuth:
+            value:
+              detail: "Not authenticated"
+          invalidCreds:
+            value:
+              detail: "Invalid username or password"
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        examples:
+          notFound:
+            value:
+              detail: "Resource not found"
+    ValidationError:
+      description: Input validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        examples:
+          fieldErrors:
+            value:
+              detail:
+                - field: "password"
+                  msg: "Too short"
+                - field: "email"
+                  msg: "Invalid format"
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+        examples:
+          server:
+            value:
+              detail: "Internal server error"
+
+security:
+  - cookieAuth: []
