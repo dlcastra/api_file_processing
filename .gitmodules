@@ -11,6 +11,3 @@
 [submodule "src/external/services/converter"]
 	path = src/external/services/converter
 	url = https://github.com/dlcastra/api_file_converter.git
-[submodule "src/external/services/media_processor"]
-	path = src/external/services/media_processor
-	url = https://github.com/dlcastra/api_media_processor.git
