@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.app.file_management.services import FileManagementService
-from src.settings.config import redis
+from src.settings.config import redis, logger
 from src.settings.database import get_db
 
 router = APIRouter()
@@ -41,7 +41,7 @@ class FileTonalityAnalysisResponse(BaseModel):
 @router.post("/converter-webhook")
 async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Depends(get_db)):
     service = FileManagementService(db)
-    await add_response_data_to_cache(request.new_s3_key, request.dict())
+    await add_response_data_to_cache(request.new_s3_key, request.model_dump(), cache_key="file_conversion")
 
     if request.status == "success":
         file = await service.find_file_by_uuid(s3_key=request.new_s3_key)
@@ -59,23 +59,27 @@ async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Dep
 
 @router.post("/parser-webhook")
 async def parser_webhook(request: FileParserResponse):
-    await add_response_data_to_cache(request.s3_key, request.dict())
-
+    await add_response_data_to_cache(request.s3_key, request.model_dump(), cache_key="file_parsing")
+    # logger.info(request.model_dump())
+    #
     if request.status == "success":
+        logger.info(f"Parser webhook received for s3_key: {request.model_dump()}")
+
         return {"message": "Parsing result cached"}
     return None
 
 
 @router.post("/analysis-webhook")
 async def analysis_webhook(request: FileTonalityAnalysisResponse):
-    await add_response_data_to_cache(request.s3_key, request.dict())
+    await add_response_data_to_cache(request.s3_key, request.model_dump(), cache_key="tonality_analysis")
 
     if request.status == "success":
+
         return {"message": "Tonality analysis result cached"}
     return None
 
 
-async def add_response_data_to_cache(s3_key, data):
+async def add_response_data_to_cache(s3_key, data, cache_key):
     uuid_key = s3_key.split("_")[0]
-    cache_key = f"tonality_status:{uuid_key}"
+    cache_key = f"{cache_key}:{uuid_key}"
     await redis.setex(cache_key, 60, json.dumps(data))

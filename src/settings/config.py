@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = config("AWS_SECRET_ACCESS_KEY", "mock-secret-key")
     AWS_S3_BUCKET_NAME: str = config("AWS_S3_BUCKET_NAME", "mock-bucket")
     AWS_REGION: str = config("AWS_REGION", "eu-north-1")
-    AWS_SQS_QUEUE_URL: str = config("AWS_SQS_QUEUE_URL", "mock-queue-url")
+    AWS_SQS_QUEUE_CONVERTER_URL: str = config("AWS_SQS_QUEUE_CONVERTER_URL", "mock-queue-url")
+    AWS_SQS_QUEUE_ANALYSIS_URL: str = config("AWS_SQS_QUEUE_ANALYSIS_URL", "mock-queue-url")
 
     # Internal URLs
     CONVERTER_WEBHOOK_URL: str = config("CONVERTER_WEBHOOK_URL")

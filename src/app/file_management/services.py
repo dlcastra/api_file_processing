@@ -52,8 +52,8 @@ class FileManagementService:
     async def download_file(self, file_id: int = None, user_id: int = None, s3_key: str = None):
         file = None
 
-        if not s3_key and (not file_id or not user_id):
-            return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.AWS_MISSED_DOWNLOAD_AGS})
+        # if not s3_key and (not file_id or not user_id):
+        #     return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.AWS_MISSED_DOWNLOAD_AGS})
 
         if not s3_key:
             stmt = select(FileModel).filter(FileModel.id == file_id, FileModel.user_id == user_id)

@@ -92,21 +92,21 @@ async def convert_file(
     response_generator = ResponseGeneratorService(file_manager_service=service)
 
     try:
-        is_user_file = await service.check_user_file(s3_key=s3_key, user_id=user_id)
-        if not is_user_file:
-            logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
-            return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
+        # is_user_file = await service.check_user_file(s3_key=s3_key, user_id=user_id)
+        # if not is_user_file:
+        #     logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
+        #     return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
-        request_body = request.dict()
+        request_body = request.model_dump()
         request_body["callback_url"] = settings.CONVERTER_WEBHOOK_URL
         request_body = json.dumps(request_body)
 
-        message, is_sent = await send_message_to_sqs(request_body)
+        message, is_sent = await send_message_to_sqs(settings.AWS_SQS_QUEUE_CONVERTER_URL, request_body)
         if not is_sent:
             logger.error(message)
             return JSONResponse(status_code=500, content={"message": message})
 
-        cashed_data = await wait_for_cache(s3_key)
+        cashed_data = await wait_for_cache(s3_key, "file_conversion")
         return await response_generator.generate_response(cashed_data, use_s3=True)
 
     except Exception as e:
@@ -128,16 +128,17 @@ async def parse_file(
             logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
             return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
-        request_body = request.dict()
+        request_body = request.model_dump()
         request_body["callback_url"] = settings.FILE_PARSER_WEBHOOK_URL
         request_body = json.dumps(request_body)
 
-        message, is_sent = await send_message_to_sqs(request_body)
+        message, is_sent = await send_message_to_sqs(settings.AWS_SQS_QUEUE_CONVERTER_URL, request_body)
         if not is_sent:
             logger.error(message)
             return JSONResponse(status_code=500, content={"message": message})
 
-        cashed_data = await wait_for_cache(s3_key)
+        cashed_data = await wait_for_cache(s3_key, "file_parsing")
+        logger.info(cashed_data)
         return await response_generator.generate_response(cashed_data)
 
     except Exception as e:
@@ -159,16 +160,16 @@ async def process_tonality_analysis(
             logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
             return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
-        request_body = request.dict()
+        request_body = request.model_dump()
         request_body["callback_url"] = settings.ANALYSIS_WEBHOOK_URL
         request_body = json.dumps(request_body)
 
-        message, is_sent = await send_message_to_sqs(request_body)
+        message, is_sent = await send_message_to_sqs(settings.AWS_SQS_QUEUE_ANALYSIS_URL, request_body)
         if not is_sent:
             logger.error(message)
             return JSONResponse(status_code=500, content={"message": message})
 
-        cashed_data = await wait_for_cache(s3_key)
+        cashed_data = await wait_for_cache(s3_key, "tonality_analysis")
         return await response_generator.generate_response(cashed_data)
 
     except Exception as e:

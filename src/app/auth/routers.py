@@ -33,11 +33,11 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
     psw_validator = PasswordValidator()
 
     try:
-        is_valid_psw = psw_validator.password_validator(user_data.dict())
+        is_valid_psw = psw_validator.password_validator(user_data.model_dump())
         if not is_valid_psw:
             raise HTTPException(status_code=400, detail=invalid_password)
 
-        new_user = await auth_service.register_user(user_data.dict())
+        new_user = await auth_service.register_user(user_data.model_dump())
         print(f"{new_user.id} -- {new_user.username}")
 
         return RegistrationResponse()
