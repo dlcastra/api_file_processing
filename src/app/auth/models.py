@@ -17,7 +17,7 @@ class User(Base):
     password = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), default=func.now())
     last_login = Column(DateTime(timezone=True), nullable=True)
-    totp_secret = Column(String, unique=True, default="")
+    totp_secret = Column(String, unique=True, nullable=True, default=None)
     is_2fa_enabled = Column(Boolean, default=False)
 
     files = relationship("src.app.file_management.models.File", back_populates="owner")
