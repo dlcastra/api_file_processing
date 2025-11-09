@@ -47,6 +47,7 @@ async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Dep
         if not file:
             return {"error": "File not found"}
 
+        file.file_name = request.new_s3_key.split("_")[1]
         file.s3_url = request.file_url
         file.s3_key = request.new_s3_key
 
