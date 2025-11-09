@@ -41,7 +41,6 @@ class FileTonalityAnalysisResponse(BaseModel):
 @router.post("/converter-webhook")
 async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Depends(get_db)):
     service = FileManagementService(db)
-    await add_response_data_to_cache(request.new_s3_key, request.model_dump(), cache_key="file_conversion")
 
     if request.status == "success":
         file = await service.find_file_by_uuid(s3_key=request.new_s3_key)
@@ -52,6 +51,11 @@ async def convert_webhook(request: FileConverterResponse, db: AsyncSession = Dep
         file.s3_key = request.new_s3_key
 
         await db.commit()
+        s3_key = request.new_s3_key
+        data = request.model_dump()
+        data["s3_key"] = s3_key
+        await add_response_data_to_cache(request.new_s3_key, data, cache_key="file_conversion")
+
         return {"message": "File updated successfully"}
 
     return None

@@ -107,6 +107,7 @@ async def convert_file(
             return JSONResponse(status_code=500, content={"message": message})
 
         cashed_data = await wait_for_cache(s3_key, "file_conversion")
+        logger.info(cashed_data)
         return await response_generator.generate_response(cashed_data, use_s3=True)
 
     except Exception as e:
@@ -138,7 +139,6 @@ async def parse_file(
             return JSONResponse(status_code=500, content={"message": message})
 
         cashed_data = await wait_for_cache(s3_key, "file_parsing")
-        logger.info(cashed_data)
         return await response_generator.generate_response(cashed_data)
 
     except Exception as e:
