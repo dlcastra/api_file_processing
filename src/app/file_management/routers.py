@@ -92,11 +92,6 @@ async def convert_file(
     response_generator = ResponseGeneratorService(file_manager_service=service)
 
     try:
-        # is_user_file = await service.check_user_file(s3_key=s3_key, user_id=user_id)
-        # if not is_user_file:
-        #     logger.warning(f"{ResponseErrorMessage.FILE_DOES_NOT_EXIST}, File key: {s3_key}")
-        #     return JSONResponse(status_code=400, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
-
         request_body = request.model_dump()
         request_body["callback_url"] = settings.CONVERTER_WEBHOOK_URL
         request_body = json.dumps(request_body)
