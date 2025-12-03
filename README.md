@@ -112,6 +112,7 @@ Create virtual env & install:
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pytest -v
 ```
 
 Configure `.env` (see template below), then run migrations:
