@@ -91,4 +91,3 @@ async def test_analysis_webhook_non_success_returns_null(app_base, monkeypatch):
     cached = json.loads(value)
     for k, v in payload.items():
         assert cached[k] == v
-

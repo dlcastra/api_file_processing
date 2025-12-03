@@ -17,6 +17,7 @@ class StubFileManagementServiceRemoveSuccess:
 class StubFileManagementServiceRemoveNotFound:
     async def remove_file(self, file_id: int, user_id: int):
         from starlette.responses import JSONResponse
+
         return JSONResponse(status_code=404, content={"message": "File does not exist"})
 
 

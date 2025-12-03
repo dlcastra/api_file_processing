@@ -133,4 +133,3 @@ async def test_parse_file_internal_error(app_base, monkeypatch):
         assert resp.status_code == 500
         data = resp.json()
         assert data["detail"] == ResponseErrorMessage.INTERNAL_ERROR
-

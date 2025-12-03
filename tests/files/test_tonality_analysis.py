@@ -140,4 +140,3 @@ async def test_tonality_analysis_internal_error(app_base, monkeypatch):
         assert resp.status_code == 500
         data = resp.json()
         assert data["detail"] == ResponseErrorMessage.INTERNAL_ERROR
-

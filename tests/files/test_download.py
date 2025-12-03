@@ -18,6 +18,7 @@ class StubFileManagementServiceNotFound:
     async def download_file(self, file_id: int, user_id: int):
         # Mimic service returning JSONResponse(404) when file does not exist
         from starlette.responses import JSONResponse
+
         return JSONResponse(status_code=404, content={"message": ResponseErrorMessage.FILE_DOES_NOT_EXIST})
 
 
@@ -69,4 +70,3 @@ async def test_download_internal_error(app_base):
         assert resp.status_code == 500
         data = resp.json()
         assert data["detail"] == ResponseErrorMessage.INTERNAL_ERROR
-

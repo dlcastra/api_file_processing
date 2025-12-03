@@ -162,4 +162,3 @@ async def test_converter_webhook_non_success_status_returns_null(app_base, monke
     assert resp.json() is None
     assert stub_db.committed is False
     assert len(fake_redis.calls) == 0
-

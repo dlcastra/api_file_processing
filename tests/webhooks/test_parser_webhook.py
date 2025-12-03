@@ -79,4 +79,3 @@ async def test_parser_webhook_non_success_returns_null(app_base, monkeypatch):
     cached = json.loads(value)
     assert cached["s3_key"] == payload["s3_key"]
     assert cached["status"] == payload["status"]
-
